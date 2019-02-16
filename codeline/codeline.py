@@ -32,6 +32,9 @@ def blamefile(filename, pattern, author_line_dict):
     logger.debug("COMMAND: {}".format(cmd))
 
     def process_output(line):
+        if type(line) is bytes:
+            line = line.decode('utf-8', errors="ignore")
+
         match_result = pattern.search(line)
         if match_result is None:
             return
@@ -78,7 +81,6 @@ def main(**options):
 
     pattern = re.compile("^author (.*)")
 
-    total_line_count = 0
     author_line_dict = {}
 
     for filename in filelist(options['file_type']):
