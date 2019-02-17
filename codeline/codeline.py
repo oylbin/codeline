@@ -4,6 +4,7 @@ import re
 import operator
 import logging
 import tempfile
+import fnmatch
 import click
 import sh
 from terminaltables import AsciiTable
@@ -15,13 +16,20 @@ from terminaltables import AsciiTable
 # https://pypi.org/project/terminaltables/ last update: 2016
 # https://pypi.python.org/pypi/tabulate last update: 2019
 
+def should_ignore(filename, ignore_dirs):
+    for pat in ignore_dirs:
+        if fnmatch.fnmatch(filename, pat):
+            return True
+    return False
 
-def filelist(file_types):
+
+def filelist(file_extensions, ignore_dirs):
     args = ['ls-files', '--']
-    for t in file_types:
-        args.append("*." + t)
+    for ext in file_extensions:
+        args.append("*." + ext)
     for filename in sh.git(*args):
-        yield filename.strip()
+        if not should_ignore(filename.strip(), ignore_dirs):
+            yield filename.strip()
 
 
 def blamefile(filename, pattern, author_line_dict):
@@ -68,8 +76,8 @@ def print_summary(author_line_dict):
 
 
 @click.command()
-@click.option("--file-type", required=True, multiple=True, help="File type to be counted")
-@click.option("--ignore-dir", default=None, multiple=True, help="dir to be ignored")
+@click.option("--file-ext", required=True, multiple=True, help="File extension to be counted")
+@click.option("--ignore-dir", default=None, multiple=True, help="dir to be ignored, Unix shell-style wildcards")
 def main(**options):
     logging.basicConfig(format='%(asctime)-15s %(message)s')
     logger = logging.getLogger("codeline")
@@ -77,13 +85,13 @@ def main(**options):
 
     # TODO ls-file 中文名称的问题
     project_name = os.path.basename(os.getcwd())
-    print(project_name)
+    print("project: {}".format(project_name))
 
     pattern = re.compile("^author (.*)")
 
     author_line_dict = {}
 
-    for filename in filelist(options['file_type']):
+    for filename in filelist(options['file_ext'], options['ignore_dir']):
         blamefile(filename, pattern, author_line_dict)
 
     print_summary(author_line_dict)
