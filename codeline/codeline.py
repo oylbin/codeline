@@ -33,17 +33,14 @@ def filelist(file_extensions, ignore_dirs):
             yield filename.strip()
 
 
-def blamefile(filename, pattern, author_line_dict, folder_line_dict):
+def blame_file(filename, pattern, author_line_dict, folder_line_dict):
     logger = logging.getLogger("codeline")
     logger.info(filename)
     cmd = sh.Command('git')
     cmd = cmd.bake("blame", "--no-color", "--line-porcelain", filename)
     logger.debug("COMMAND: {}".format(cmd))
 
-    p = pathlib.Path(filename)
-    folder_name = p.parts[0]
-    if folder_name == filename:
-        folder_name = '.'
+    folders = list(folder_names(filename))
 
     def process_output(line):
         if type(line) is bytes:
@@ -57,10 +54,12 @@ def blamefile(filename, pattern, author_line_dict, folder_line_dict):
             author_line_dict[author] += 1
         else:
             author_line_dict[author] = 1
-        if folder_name in folder_line_dict:
-            folder_line_dict[folder_name] += 1
-        else:
-            folder_line_dict[folder_name] = 1
+
+        for folder_name in folders:
+            if folder_name in folder_line_dict:
+                folder_line_dict[folder_name] += 1
+            else:
+                folder_line_dict[folder_name] = 1
 
     cmd(_out=process_output, _tty_out=False)
 
@@ -92,6 +91,15 @@ def print_line_count_for_each_folder(folder_line_dict):
     print(table.table)
 
 
+def folder_names(filename):
+    parent_path = os.path.dirname(filename)
+
+    while parent_path != '':
+        yield parent_path
+        parent_path = os.path.dirname(parent_path)
+    yield '.'
+
+
 @click.command()
 @click.option("--file-ext", required=True, multiple=True, help="File extension to be counted")
 @click.option("--ignore-dir", default=None, multiple=True, help="dir to be ignored, Unix shell-style wildcards")
@@ -110,7 +118,7 @@ def main(**options):
     folder_line_dict = {}
 
     for filename in filelist(options['file_ext'], options['ignore_dir']):
-        blamefile(filename, pattern, author_line_dict, folder_line_dict)
+        blame_file(filename, pattern, author_line_dict, folder_line_dict)
 
     print_line_count_for_each_folder(folder_line_dict)
     print_summary(author_line_dict)
