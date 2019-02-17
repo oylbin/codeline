@@ -4,6 +4,7 @@ import re
 import operator
 import logging
 import tempfile
+import pathlib
 import fnmatch
 import click
 import sh
@@ -32,12 +33,17 @@ def filelist(file_extensions, ignore_dirs):
             yield filename.strip()
 
 
-def blamefile(filename, pattern, author_line_dict):
+def blamefile(filename, pattern, author_line_dict, folder_line_dict):
     logger = logging.getLogger("codeline")
     logger.info(filename)
     cmd = sh.Command('git')
     cmd = cmd.bake("blame", "--no-color", "--line-porcelain", filename)
     logger.debug("COMMAND: {}".format(cmd))
+
+    p = pathlib.Path(filename)
+    folder_name = p.parts[0]
+    if folder_name == filename:
+        folder_name = '.'
 
     def process_output(line):
         if type(line) is bytes:
@@ -51,6 +57,10 @@ def blamefile(filename, pattern, author_line_dict):
             author_line_dict[author] += 1
         else:
             author_line_dict[author] = 1
+        if folder_name in folder_line_dict:
+            folder_line_dict[folder_name] += 1
+        else:
+            folder_line_dict[folder_name] = 1
 
     cmd(_out=process_output, _tty_out=False)
 
@@ -63,7 +73,7 @@ def print_summary(author_line_dict):
     # for name, count in sorted_x:
     #     print("{:>24}: {:>10}, {:10.2f}%".format(name, count, 100.0 * count / total_line_count))
 
-    table_data = [["name", "line count", "radio"]]
+    table_data = [["author", "line count", "radio"]]
     for name, count in sorted_x:
         table_data.append([name, count, "{:.2f}%".format(100.0 * count / total_line_count)])
 
@@ -73,6 +83,13 @@ def print_summary(author_line_dict):
 
     print(table.table)
     # print(tabulate(table_data[1:], table_data[0], tablefmt="pipe"))
+
+
+def print_line_count_for_each_folder(folder_line_dict):
+    sorted_x = sorted(folder_line_dict.items(), key=operator.itemgetter(1), reverse=True)
+    sorted_x.insert(0, ["folder name", "line count"])
+    table = AsciiTable(sorted_x)
+    print(table.table)
 
 
 @click.command()
@@ -90,8 +107,10 @@ def main(**options):
     pattern = re.compile("^author (.*)")
 
     author_line_dict = {}
+    folder_line_dict = {}
 
     for filename in filelist(options['file_ext'], options['ignore_dir']):
-        blamefile(filename, pattern, author_line_dict)
+        blamefile(filename, pattern, author_line_dict, folder_line_dict)
 
+    print_line_count_for_each_folder(folder_line_dict)
     print_summary(author_line_dict)
